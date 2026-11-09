@@ -1,6 +1,6 @@
 # PrefillPrompt
 
-PrefillPrompt turns a prompt into a shareable link for ChatGPT, Claude, Gemini, or Perplexity. Choose an AI and model in one searchable field, write the prompt, then tap the arrow to copy the link.
+This fork provides a ChatGPT-focused link studio at https://prefillprompt-baer.vercel.app. Write a prompt, choose whether to request web search, and copy a shareable link, Markdown, or QR code. The original multi-provider API remains available for existing links.
 
 > [!IMPORTANT]
 > The prompt is part of the URL. Anyone who receives the link—and systems that record URLs—can read it. Do not put secrets or sensitive personal information in a shared prompt.
@@ -11,19 +11,14 @@ PrefillPrompt turns a prompt into a shareable link for ChatGPT, Claude, Gemini, 
 
 ## Features
 
-- ChatGPT, Claude, Gemini, and Perplexity destinations
-- One provider-and-model combobox, searchable by names such as ChatGPT, OpenAI, Claude, Anthropic, Gemini, or an exact model
-- Flexible aliases `latest`, `latest-fast`, and `latest-reasoning`
-- A checked-in model catalog refreshed from OpenRouter through tested weekly pull requests
-- ChatGPT web-search links
-- Experimental temporary or incognito conversation links where the destination supports them
-- Copyable URLs and Markdown buttons
-- QR-code export and native Web Share where the browser supports it
-- Progressively disclosed share formats, conversation options, examples, and browser-local history
-- A reliable copy-and-open Gemini handoff when a public deep link cannot preserve the prompt
-- A stateless Nuxt application deployed with Cloudflare Workers and Static Assets
+- ChatGPT prompt links with optional web search
+- Copyable URLs and Markdown, QR export, and manual-copy fallback
+- Examples and browser-local history with remove and undo
+- Responsive keyboard-accessible interface with reduced-motion support
+- Existing ChatGPT, Claude, Gemini, and Perplexity API links remain supported
+- Stateless Nuxt app; this fork is deployed on Vercel
 
-History and preferences stay in the current browser. PrefillPrompt does not sync them between devices.
+History stays in the current browser and does not sync between devices. Model selection, temporary mode, and native device sharing are not exposed in this fork's builder.
 
 ## Privacy
 

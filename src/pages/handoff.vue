@@ -57,6 +57,7 @@ async function copyAndOpen() {
                 :value="prompt"
                 readonly
                 aria-label="Prompt to copy"
+                style="resize: none"
                 rows="5"
             />
             <button :disabled="!prompt" @click="copyAndOpen">

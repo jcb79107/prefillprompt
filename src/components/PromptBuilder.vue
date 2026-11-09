@@ -1,409 +1,223 @@
 <script setup lang="ts">
-import type { ModelChoice } from '~/lib/model-catalog'
-import type { PromptLinkOptions } from '~/lib/prompt-links'
-import type { ProviderId } from '~/lib/providers'
+import type { PromptHistoryEntry } from '~/composables/usePromptHistory'
 import QRCode from 'qrcode'
-import {
-    buildAbsoluteShareUrl,
-    buildMarkdownLink,
-    isShareUrlWithinLimit,
-    MAX_PROMPT_LENGTH,
-    MAX_QR_URL_LENGTH,
-} from '~/lib/prompt-links'
-import { getProvider, isModelAlias } from '~/lib/providers'
-import { readStorage, removeStorage, writeStorage } from '~/lib/safe-storage'
+import { buildAbsoluteShareUrl, buildMarkdownLink, isShareUrlWithinLimit, MAX_PROMPT_LENGTH, MAX_QR_URL_LENGTH } from '~/lib/prompt-links'
 
 const prompt = ref('')
-const provider = ref<ProviderId>('chatgpt')
-const model = ref('latest')
-const webSearch = ref(false)
-const temporary = ref(false)
-const origin = ref('https://prefillprompt.com')
-const canNativeShare = ref(false)
-const activeSheet = ref<'library' | 'more' | null>(null)
+const webSearch = ref(true)
+const origin = ref('')
+const status = ref('')
+const copyBusy = ref(false)
+const copyFailed = ref(false)
 const qrDataUrl = ref('')
 const qrOpen = ref(false)
-const showTip = ref(false)
-const statusMessage = ref('')
-const statusVisible = ref(false)
-const statusIsError = ref(false)
-const copied = ref(false)
-let statusTimer: number | undefined
-let copiedTimer: number | undefined
-
-const { clear, entries, remove, save } = usePromptHistory()
-
-const hasPrompt = computed(() => prompt.value.trim().length > 0)
-const currentProvider = computed(() => getProvider(provider.value))
-const options = computed<PromptLinkOptions>(() => ({
-    prompt: prompt.value,
-    provider: provider.value,
-    model: model.value,
-    webSearch: webSearch.value,
-    temporary: temporary.value,
-}))
-const promptUrl = computed(() => buildAbsoluteShareUrl(origin.value, options.value))
-const promptUrlWithinLimit = computed(() => isShareUrlWithinLimit(promptUrl.value))
-const promptReady = computed(() => hasPrompt.value && promptUrlWithinLimit.value)
-const qrAvailable = computed(() => promptReady.value && promptUrl.value.length <= MAX_QR_URL_LENGTH)
-const choiceHint = computed(() => {
-    if (provider.value === 'gemini') {
-        return model.value === 'latest'
-            ? 'Gemini uses a reliable copy + open handoff.'
-            : 'Gemini uses copy + open — confirm this model there.'
-    }
-    if (!isModelAlias(model.value)) {
-        return 'Exact model hint — confirm it after opening.'
-    }
-    if (model.value !== 'latest') {
-        return 'Model preference — confirm it after opening.'
-    }
-    return ''
-})
+const qrBusy = ref(false)
+const promptInput = ref<HTMLTextAreaElement>()
+const removed = ref<PromptHistoryEntry>()
+const { entries: storedEntries, remove, save } = usePromptHistory()
+const entries = computed(() => storedEntries.value.filter(entry => !entry.provider || entry.provider === 'chatgpt'))
+const options = computed(() => ({ prompt: prompt.value, provider: 'chatgpt' as const, webSearch: webSearch.value }))
+const promptUrl = computed(() => origin.value ? buildAbsoluteShareUrl(origin.value, options.value) : '')
+const tooLong = computed(() => prompt.value.length > MAX_PROMPT_LENGTH || (promptUrl.value && !isShareUrlWithinLimit(promptUrl.value)))
+const ready = computed(() => Boolean(prompt.value.trim() && promptUrl.value && !tooLong.value))
+const qrAvailable = computed(() => ready.value && promptUrl.value.length <= MAX_QR_URL_LENGTH)
+const examples = [
+    { title: 'Find a better option', category: 'Compare', prompt: 'Compare three highly rated noise-cancelling headphones under $250. Search current reviews and prices, link your sources, and explain who each option is best for.' },
+    { title: 'Plan a little escape', category: 'Explore', prompt: 'Plan a relaxed weekend in Chicago with independent bookstores, great coffee, and one neighborhood walk. Search for current hours and include source links.' },
+    { title: 'Get up to speed', category: 'Learn', prompt: 'What changed in renewable energy this month? Search recent reporting, explain the three most important developments in plain English, and cite your sources.' },
+]
 
 onMounted(() => {
     origin.value = window.location.origin
-    canNativeShare.value = typeof navigator.share === 'function'
-    showTip.value = readStorage(() => window.localStorage, 'prefillprompt-tip-dismissed') !== '1'
-
-    const stored = readStorage(() => window.localStorage, 'prefillprompt-selection')
-    if (stored) {
-        try {
-            const selection = JSON.parse(stored) as { provider?: ProviderId, model?: string }
-            if (
-                selection.provider
-                && ['chatgpt', 'claude', 'gemini', 'perplexity'].includes(selection.provider)
-                && selection.model
-            ) {
-                provider.value = selection.provider
-                model.value = selection.model
-            }
-        }
-        catch {
-            removeStorage(() => window.localStorage, 'prefillprompt-selection')
-        }
-    }
+})
+watch([prompt, webSearch], () => {
+    status.value = ''
+    copyFailed.value = false
 })
 
-watch([provider, model], ([nextProvider, nextModel]) => {
-    if (import.meta.client) {
-        writeStorage(() => window.localStorage, 'prefillprompt-selection', JSON.stringify({
-            provider: nextProvider,
-            model: nextModel,
-        }))
-    }
-})
-
-watch(provider, (value) => {
-    const definition = getProvider(value)
-    if (definition.capabilities.webSearch !== 'supported') {
-        webSearch.value = false
-    }
-    if (definition.capabilities.temporary === 'unavailable') {
-        temporary.value = false
-    }
-})
-
-watch(prompt, (value) => {
-    if (value.trim() && showTip.value) {
-        dismissTip()
-    }
-})
-
-onBeforeUnmount(() => {
-    if (statusTimer !== undefined) {
-        window.clearTimeout(statusTimer)
-    }
-    if (copiedTimer !== undefined) {
-        window.clearTimeout(copiedTimer)
-    }
-})
-
-function dismissTip() {
-    showTip.value = false
-    if (import.meta.client) {
-        writeStorage(() => window.localStorage, 'prefillprompt-tip-dismissed', '1')
-    }
+function loadPrompt(value: string, search = true) {
+    prompt.value = value
+    webSearch.value = search
+    nextTick(() => promptInput.value?.focus())
 }
 
-function selectModel(choice: ModelChoice) {
-    provider.value = choice.provider
-    model.value = choice.model
-}
-
-function announce(message: string, error = false) {
-    if (statusTimer !== undefined) {
-        window.clearTimeout(statusTimer)
-    }
-    statusMessage.value = message
-    statusIsError.value = error
-    statusVisible.value = true
-    statusTimer = window.setTimeout(() => {
-        statusVisible.value = false
-        statusTimer = undefined
-    }, 2800)
-}
-
-function clearStatusAfterExit(event: TransitionEvent) {
-    if (event.propertyName === 'opacity' && !statusVisible.value) {
-        statusMessage.value = ''
-    }
-}
-
-async function copyText(value: string, message: string) {
+async function copyLink(markdown = false) {
+    if (!ready.value || copyBusy.value)
+        return
+    copyBusy.value = true
+    copyFailed.value = false
+    const value = markdown ? buildMarkdownLink(promptUrl.value, 'chatgpt', prompt.value) : promptUrl.value
+    const sharedOptions = { ...options.value }
     try {
         await navigator.clipboard.writeText(value)
-        save(options.value)
-        announce(message)
-        return true
+        save(sharedOptions)
+        status.value = markdown ? 'Markdown copied. Ready to paste.' : 'Link copied. Send it to someone curious.'
     }
     catch {
-        announce('Clipboard access was blocked.', true)
-        return false
+        copyFailed.value = true
+        status.value = 'Clipboard blocked. Select the link below and copy it manually.'
     }
+    finally { copyBusy.value = false }
 }
 
-async function copyLink() {
-    if (!hasPrompt.value) {
-        return
-    }
-    if (!promptUrlWithinLimit.value) {
-        announce('Shorten this prompt before sharing it.', true)
-        return
-    }
-
-    if (await copyText(promptUrl.value, 'Prompt link copied.')) {
-        copied.value = true
-        if (copiedTimer !== undefined) {
-            window.clearTimeout(copiedTimer)
-        }
-        copiedTimer = window.setTimeout(() => {
-            copied.value = false
-            copiedTimer = undefined
-        }, 1800)
-    }
-}
-
-function copyMarkdown() {
-    activeSheet.value = null
-    if (!promptReady.value) {
-        return
-    }
-    return copyText(
-        buildMarkdownLink(promptUrl.value, provider.value, prompt.value),
-        'Markdown link copied.',
-    )
-}
-
-function openPrompt() {
-    activeSheet.value = null
-    if (!promptReady.value) {
-        return
-    }
-    save(options.value)
-    window.open(promptUrl.value, '_blank', 'noopener,noreferrer')
-}
-
-async function nativeShare() {
-    activeSheet.value = null
-    if (!promptReady.value) {
-        return
-    }
-    try {
-        await navigator.share({
-            title: `Ask ${currentProvider.value.label}`,
-            text: 'Open this prompt in your AI service.',
-            url: promptUrl.value,
-        })
+function remember() {
+    if (ready.value)
         save(options.value)
-    }
-    catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-            announce('The share sheet could not be opened.', true)
-        }
-    }
 }
 
 async function showQr() {
-    activeSheet.value = null
-    if (!promptReady.value || !qrAvailable.value) {
+    if (!qrAvailable.value || qrBusy.value)
         return
-    }
-
+    qrBusy.value = true
+    const sharedOptions = { ...options.value }
     try {
-        qrDataUrl.value = await QRCode.toDataURL(promptUrl.value, {
-            color: {
-                dark: '#0b2f6b',
-                light: '#fffdf8',
-            },
-            errorCorrectionLevel: 'M',
-            margin: 2,
-            width: 360,
-        })
+        qrDataUrl.value = await QRCode.toDataURL(promptUrl.value, { margin: 2, width: 360, errorCorrectionLevel: 'M', color: { dark: '#20243b', light: '#ffffff' } })
         qrOpen.value = true
-        save(options.value)
+        save(sharedOptions)
     }
-    catch {
-        announce('This prompt is too long for a QR code.', true)
-    }
+    catch { status.value = 'Could not create a QR code. Copy the link instead.' }
+    finally { qrBusy.value = false }
 }
 
-function useOptions(next: PromptLinkOptions) {
-    prompt.value = next.prompt
-    provider.value = next.provider ?? 'chatgpt'
-    model.value = next.model ?? 'latest'
-    webSearch.value = Boolean(next.webSearch)
-    temporary.value = Boolean(next.temporary)
+function removeEntry(entry: PromptHistoryEntry) {
+    removed.value = entry
+    remove(entry.id)
+    status.value = 'Recent link removed. You can undo below.'
 }
 
-function selectFromLibrary(next: PromptLinkOptions) {
-    useOptions(next)
-    announce('Prompt loaded.')
+function undoRemove() {
+    if (!removed.value)
+        return
+    save(removed.value)
+    removed.value = undefined
+    status.value = 'Recent link restored.'
 }
 </script>
 
 <template>
-    <section class="phone-frame" aria-label="Prompt link builder">
-        <div class="phone-screen">
-            <div class="phone-status" aria-hidden="true">
-                <span>9:41</span>
-                <span class="dynamic-island" />
-                <span class="phone-signals">
-                    <i />
-                    <i />
-                    <i />
-                </span>
-            </div>
-
-            <header class="phone-header">
-                <button
-                    class="icon-button"
-                    aria-label="Open prompt library"
-                    data-testid="library-button"
-                    @click="activeSheet = 'library'"
-                >
-                    <svg aria-hidden="true" viewBox="0 0 24 24">
-                        <path d="M5 4.5h14v15H5zM8 8h8M8 11.5h8M8 15h5" />
-                    </svg>
-                </button>
-                <div>
-                    <p class="phone-title">
-                        PrefillPrompt
-                    </p>
-                    <span>{{ currentProvider.label }}</span>
+    <div class="workspace">
+        <div class="workspace-heading">
+            <span class="eyebrow">THE LINK STUDIO</span>
+            <span class="workspace-note"><span class="status-dot" /> No account needed</span>
+        </div>
+        <div class="workspace-grid">
+            <section class="editor-panel" aria-labelledby="editor-title">
+                <div class="panel-heading">
+                    <label id="editor-title" for="prompt-input">What’s the question?</label>
+                    <span class="character-count">{{ prompt.length.toLocaleString('en-US') }} / 12,000</span>
                 </div>
-                <button
-                    class="icon-button"
-                    aria-label="More options"
-                    data-testid="more-button"
-                    @click="activeSheet = 'more'"
-                >
-                    <svg aria-hidden="true" viewBox="0 0 24 24">
-                        <circle cx="5" cy="12" r="1.25" />
-                        <circle cx="12" cy="12" r="1.25" />
-                        <circle cx="19" cy="12" r="1.25" />
-                    </svg>
-                </button>
-            </header>
-
-            <div class="conversation-area">
-                <Transition name="coachmark">
-                    <aside v-if="showTip" class="first-run-tip">
-                        <button aria-label="Dismiss getting started tip" @click="dismissTip">
-                            ×
-                        </button>
-                        <strong>Make a prompt link</strong>
-                        <p>Choose an AI, type the starting prompt, then tap the arrow to copy.</p>
-                    </aside>
-                </Transition>
-
-                <div v-if="!showTip" class="empty-state" aria-hidden="true">
-                    <svg viewBox="0 0 36 36">
-                        <path d="M8 10.5h13v15H8zM13 15h8M13 19h5M23 14h5l-3-3M28 14l-3 3" />
-                    </svg>
-                    <span>One prompt. Any AI.</span>
-                </div>
-            </div>
-
-            <p
-                class="phone-toast"
-                :class="{ error: statusIsError, visible: statusVisible }"
-                aria-live="polite"
-                role="status"
-                @transitionend="clearStatusAfterExit"
-            >
-                {{ statusMessage }}
-            </p>
-
-            <div class="phone-composer">
-                <ModelCombobox
-                    :model="model"
-                    :provider="provider"
-                    @select="selectModel"
+                <textarea
+                    id="prompt-input"
+                    ref="promptInput"
+                    v-model="prompt"
+                    class="prompt-input"
+                    style="resize: none"
+                    :maxlength="MAX_PROMPT_LENGTH"
+                    :aria-invalid="Boolean(tooLong)"
+                    aria-describedby="prompt-help prompt-limit"
+                    placeholder="Find the best little coffee shops in Copenhagen. Include a few local favorites and links to their menus…"
                 />
-                <p v-if="choiceHint" class="model-choice-hint">
-                    {{ choiceHint }}
+                <p id="prompt-limit" class="validation-message" :role="tooLong ? 'alert' : undefined">
+                    {{ tooLong ? 'This prompt makes the link too long. Shorten it before sharing.' : 'A little context goes a long way. Be specific about what you need.' }}
                 </p>
-                <div class="prompt-composer">
-                    <label class="sr-only" for="prompt-input">Prompt text</label>
-                    <textarea
-                        id="prompt-input"
-                        v-model="prompt"
-                        data-testid="prompt-input"
-                        :aria-describedby="!promptUrlWithinLimit ? 'prompt-limit-message' : undefined"
-                        :maxlength="MAX_PROMPT_LENGTH"
-                        rows="1"
-                        placeholder="Message to share"
-                    />
-                    <button
-                        class="send-button"
-                        :class="{ copied }"
-                        :disabled="!promptReady"
-                        :aria-label="copied ? 'Prompt link copied' : 'Copy prompt link'"
-                        data-testid="copy-link-button"
-                        @click="copyLink"
-                    >
-                        <svg v-if="copied" aria-hidden="true" viewBox="0 0 24 24">
-                            <path d="m6 12 4 4 8-9" />
-                        </svg>
-                        <svg v-else aria-hidden="true" viewBox="0 0 24 24">
-                            <path d="M12 19V5M7 10l5-5 5 5" />
-                        </svg>
+                <div class="editor-settings">
+                    <label class="search-toggle">
+                        <input v-model="webSearch" type="checkbox">
+                        <span class="switch-track" aria-hidden="true"><span /></span>
+                        <span><strong>Search the web</strong><small>Ask ChatGPT for up-to-date answers</small></span>
+                    </label>
+                    <span class="mode-badge">{{ webSearch ? 'SEARCH ON' : 'CHAT MODE' }}</span>
+                </div>
+                <p id="prompt-help" class="editor-footnote">
+                    Your words go straight to ChatGPT. We don’t rewrite them.
+                </p>
+            </section>
+
+            <section class="share-panel" aria-labelledby="share-title">
+                <div class="share-heading">
+                    <span class="eyebrow">YOUR NEXT CONVERSATION</span>
+                    <svg class="route-mark" aria-hidden="true" viewBox="0 0 48 48"><path d="M9 33h15a9 9 0 0 0 0-18H9m9-7-8 7 8 7M30 30l9 9m0-9v9h-9" /></svg>
+                </div>
+                <div class="destination">
+                    <span class="destination-icon" aria-hidden="true">↗</span><div>
+                        <h2 id="share-title">
+                            ChatGPT<span>{{ webSearch ? ' + web search' : '' }}</span>
+                        </h2><p>A fresh conversation for everyone.</p>
+                    </div>
+                </div>
+                <blockquote :class="{ 'preview-empty': !prompt.trim() }">
+                    {{ prompt.trim() || 'Your next good question starts here.' }}
+                </blockquote>
+                <div class="share-divider" />
+                <button class="button button-primary" :disabled="!ready || copyBusy" :aria-busy="copyBusy" @click="copyLink()">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" /></svg>
+                    {{ copyBusy ? 'Copying…' : 'Copy share link' }}
+                    <span aria-hidden="true">↗</span>
+                </button>
+                <a v-if="ready" class="button button-secondary" :href="promptUrl" target="_blank" rel="noopener noreferrer" @click="remember">{{ webSearch ? 'Search in ChatGPT' : 'Open in ChatGPT' }} <span aria-hidden="true">↗</span></a>
+                <button v-else class="button button-secondary" disabled>
+                    {{ webSearch ? 'Search in ChatGPT' : 'Open in ChatGPT' }} <span aria-hidden="true">↗</span>
+                </button>
+                <div class="format-actions">
+                    <button :disabled="!ready || copyBusy" @click="copyLink(true)">
+                        Copy Markdown
+                    </button>
+                    <span aria-hidden="true">·</span>
+                    <button :disabled="!qrAvailable || qrBusy" @click="showQr">
+                        {{ qrBusy ? 'Creating…' : 'QR code' }}
                     </button>
                 </div>
-                <p
-                    v-if="hasPrompt && !promptUrlWithinLimit"
-                    id="prompt-limit-message"
-                    class="prompt-limit-message"
-                    role="alert"
-                >
-                    This prompt becomes too large when URL-encoded. Shorten it before sharing.
+                <p v-if="ready && !qrAvailable" class="small-note">
+                    This link is too long for a QR code. Copy it instead.
                 </p>
-            </div>
+                <p class="status-message" :class="{ 'is-error': copyFailed }" role="status" aria-live="polite">
+                    {{ status || (ready ? 'Ready when you are.' : 'Add your prompt to make a link.') }}
+                </p>
+                <details v-if="ready" class="link-details" :open="copyFailed">
+                    <summary>View & copy the full link</summary>
+                    <label class="sr-only" for="share-url">Share link</label>
+                    <textarea id="share-url" :value="promptUrl" readonly rows="3" style="resize: none" @focus="($event.target as HTMLTextAreaElement).select()" />
+                </details>
+            </section>
         </div>
+        <p class="privacy-note">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6zM12 8v5m0 3h.01" /></svg><span>Anyone with the link can read the prompt. Keep sensitive information out. Opening a link may send it immediately; ChatGPT controls search availability.</span>
+        </p>
 
-        <LibrarySheet
-            :entries="entries"
-            :open="activeSheet === 'library'"
-            @clear="clear"
-            @close="activeSheet = null"
-            @remove="remove"
-            @select="selectFromLibrary"
-        />
-        <MoreSheet
-            v-model:temporary="temporary"
-            v-model:web-search="webSearch"
-            :can-share="canNativeShare"
-            :open="activeSheet === 'more'"
-            :prompt-ready="promptReady"
-            :provider="provider"
-            :qr-available="qrAvailable"
-            @close="activeSheet = null"
-            @copy-markdown="copyMarkdown"
-            @native-share="nativeShare"
-            @open-prompt="openPrompt"
-            @qr="showQr"
-        />
+        <section class="starter-section" aria-labelledby="starter-title">
+            <div class="section-heading">
+                <h2 id="starter-title">
+                    A little inspiration
+                </h2><p>Start with one of these. Make it yours.</p>
+            </div>
+            <div class="starter-grid">
+                <button v-for="example in examples" :key="example.title" class="starter-button" @click="loadPrompt(example.prompt)">
+                    <span class="eyebrow">{{ example.category }}</span><strong>{{ example.title }} <span aria-hidden="true">↗</span></strong>
+                </button>
+            </div>
+        </section>
+        <section class="recent-section" aria-labelledby="recent-title">
+            <div class="section-heading">
+                <h2 id="recent-title">
+                    Recently sent
+                </h2><p>Only in this browser. Up to six links.</p>
+            </div>
+            <p v-if="!entries.length" class="recent-empty">
+                Your copied and opened prompts will appear here.
+            </p>
+            <ul v-else class="recent-list">
+                <li v-for="entry in entries" :key="entry.id">
+                    <button class="recent-use" @click="loadPrompt(entry.prompt, entry.webSearch ?? false)">
+                        <span>{{ entry.prompt }}</span><small>{{ entry.webSearch ? 'Web search' : 'Chat' }} <span aria-hidden="true">↗</span></small>
+                    </button><button class="remove-button" :aria-label="`Remove recent prompt: ${entry.prompt.slice(0, 40)}`" @click="removeEntry(entry)">
+                        ×
+                    </button>
+                </li>
+            </ul>
+            <button v-if="removed" class="text-button" @click="undoRemove">
+                Undo remove
+            </button>
+        </section>
         <QrDialog :data-url="qrDataUrl" :open="qrOpen" @close="qrOpen = false" />
-    </section>
+    </div>
 </template>

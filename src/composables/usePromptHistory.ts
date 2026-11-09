@@ -1,10 +1,10 @@
+import type { PromptHistoryEntry } from '~/lib/prompt-history'
 import type { PromptLinkOptions } from '~/lib/prompt-links'
+import { parseHistory } from '~/lib/prompt-history'
+import { buildSharePath } from '~/lib/prompt-links'
 import { readStorage, removeStorage, writeStorage } from '~/lib/safe-storage'
 
-export interface PromptHistoryEntry extends PromptLinkOptions {
-    id: string
-    createdAt: string
-}
+export type { PromptHistoryEntry } from '~/lib/prompt-history'
 
 const STORAGE_KEY = 'prefillprompt-history-v1'
 const MAX_HISTORY_ITEMS = 6
@@ -16,7 +16,7 @@ export function usePromptHistory() {
         try {
             const stored = readStorage(() => window.localStorage, STORAGE_KEY)
             const parsed = stored ? JSON.parse(stored) : []
-            entries.value = Array.isArray(parsed) ? parsed.slice(0, MAX_HISTORY_ITEMS) : []
+            entries.value = parseHistory(parsed)
         }
         catch {
             entries.value = []
@@ -34,14 +34,8 @@ export function usePromptHistory() {
             return
         }
 
-        const duplicateKey = JSON.stringify(options)
-        const withoutDuplicate = entries.value.filter(entry => JSON.stringify({
-            prompt: entry.prompt,
-            provider: entry.provider,
-            model: entry.model,
-            webSearch: entry.webSearch,
-            temporary: entry.temporary,
-        }) !== duplicateKey)
+        const duplicateKey = buildSharePath(options)
+        const withoutDuplicate = entries.value.filter(entry => buildSharePath(entry) !== duplicateKey)
 
         entries.value = [
             {
