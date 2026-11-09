@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { computed, ref } from 'vue'
 import { parse } from 'vue/compiler-sfc'
+import * as historyParser from '../src/lib/prompt-history.ts'
 import * as links from '../src/lib/prompt-links.ts'
 import * as providers from '../src/lib/providers.ts'
 import * as storage from '../src/lib/safe-storage.ts'
@@ -26,6 +27,7 @@ function evaluate(source: string, globals: Record<string, unknown> = {}) {
         require: (name: string) => {
             const modules: Record<string, unknown> = {
                 '~/lib/prompt-links': links,
+                '~/lib/prompt-history': historyParser,
                 '~/lib/providers': providers,
                 '~/lib/safe-storage': storage,
                 'qrcode': { toDataURL: globals.perform },
@@ -46,9 +48,8 @@ function evaluate(source: string, globals: Record<string, unknown> = {}) {
 interface Builder {
     prompt: Ref<string>
     webSearch: Ref<boolean>
-    copyLink: () => Promise<void>
+    copyLink: (markdown?: boolean) => Promise<void>
     copyMarkdown: () => Promise<unknown>
-    nativeShare: () => Promise<void>
     showQr: () => Promise<void>
 }
 
@@ -56,15 +57,17 @@ function setupBuilder(perform: () => Promise<string>) {
     const saved: PromptLinkOptions[] = []
     const file = readFileSync(new URL('../src/components/PromptBuilder.vue', import.meta.url), 'utf8')
     const script = parse(file).descriptor.scriptSetup!.content
-    const context = evaluate(`${script}\nglobalThis.harness = { prompt, webSearch, copyLink, copyMarkdown, nativeShare, showQr }`, {
+    const context = evaluate(`${script}\nglobalThis.harness = { prompt, webSearch, copyLink, copyMarkdown: () => copyLink(true), showQr, origin }`, {
         perform,
         navigator: { clipboard: { writeText: perform }, share: perform },
-        usePromptHistory: () => ({ save: (value: PromptLinkOptions) => saved.push({ ...value }) }),
+        usePromptHistory: () => ({ entries: ref([]), save: (value: PromptLinkOptions) => saved.push({ ...value }) }),
     })
+    const builder = context.harness as Builder & { origin: Ref<string> }
+    builder.origin.value = 'https://example.com'
     return { builder: context.harness, saved }
 }
 
-for (const action of ['copyLink', 'copyMarkdown', 'nativeShare', 'showQr'] as const) {
+for (const action of ['copyLink', 'copyMarkdown', 'showQr'] as const) {
     describe(action, () => {
         it('saves the original prompt and options when editing continues during sharing', async () => {
             let finish!: (value: string) => void

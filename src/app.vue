@@ -4,7 +4,7 @@ useHead({
         lang: 'en',
     },
     link: [
-        { rel: 'canonical', href: 'https://prefillprompt.com/' },
+        { rel: 'canonical', href: 'https://prefillprompt-baer.vercel.app/' },
         { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
         { rel: 'manifest', href: '/site.webmanifest' },
     ],
@@ -27,18 +27,15 @@ useHead({
 })
 
 useSeoMeta({
-    title: 'PrefillPrompt — One prompt, any AI',
-    description: 'Create one-click prompt links for ChatGPT, Claude, Gemini, and Perplexity. Share them as a URL, Markdown button, or QR code.',
-    ogTitle: 'PrefillPrompt — One prompt, any AI',
-    ogDescription: 'Create one-click prompt links for ChatGPT, Claude, Gemini, and Perplexity.',
-    ogImage: 'https://prefillprompt.com/og-prefillprompt.png',
-    ogImageAlt: 'One prompt branching into four AI chat destinations',
+    title: 'PrefillPrompt — Share a better ChatGPT prompt',
+    description: 'Create one-click ChatGPT prompt links with optional web search. Share them as a URL, Markdown button, or QR code.',
+    ogTitle: 'PrefillPrompt — Share a better ChatGPT prompt',
+    ogDescription: 'Create one-click ChatGPT prompt links with optional web search.',
     ogType: 'website',
-    ogUrl: 'https://prefillprompt.com/',
-    twitterCard: 'summary_large_image',
-    twitterTitle: 'PrefillPrompt — One prompt, any AI',
-    twitterDescription: 'Create one-click prompt links for ChatGPT, Claude, Gemini, and Perplexity.',
-    twitterImage: 'https://prefillprompt.com/og-prefillprompt.png',
+    ogUrl: 'https://prefillprompt-baer.vercel.app/',
+    twitterCard: 'summary',
+    twitterTitle: 'PrefillPrompt — Share a better ChatGPT prompt',
+    twitterDescription: 'Create one-click ChatGPT prompt links with optional web search.',
 })
 </script>
 

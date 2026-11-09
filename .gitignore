@@ -27,3 +27,8 @@ logs
 
 # Other
 **.context.**
+
+# Local deployment and browser QA outputs
+.vercel
+.playwright-cli
+output/playwright
