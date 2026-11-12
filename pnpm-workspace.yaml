@@ -12,6 +12,7 @@ overrides:
   '@vue/language-core>minimatch': ^11.0.1
   eslint>minimatch: ^11.0.1
   micromark-extension-math>katex: ^0.18.2
+  readdir-glob>minimatch: ^11.0.1
 
 patchedDependencies:
   deepmerge@4.3.1: patches/deepmerge@4.3.1.patch
