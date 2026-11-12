@@ -1,4 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm exec nuxt build --preset=vercel"
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "buildCommand": "pnpm build"
 }
