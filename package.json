@@ -4,21 +4,21 @@
     "private": true,
     "packageManager": "pnpm@10.12.4",
     "license": "MIT",
-    "homepage": "https://prefillprompt.com",
+    "homepage": "https://prefillprompt-baer.vercel.app",
     "repository": {
         "type": "git",
-        "url": "https://github.com/ThatGuySam/prefillprompt.git"
+        "url": "https://github.com/jcb79107/prefillprompt.git"
     },
     "bugs": {
-        "url": "https://github.com/ThatGuySam/prefillprompt/issues"
+        "url": "https://github.com/jcb79107/prefillprompt/issues"
     },
     "engines": {
         "node": "^22.13.0 || >=24.0.0"
     },
     "scripts": {
-        "build": "nuxt build",
+        "build": "nuxt build --preset=vercel",
         "build:cloudflare": "nuxi cleanup && nuxt build --preset=cloudflare-module",
-        "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build:cloudflare",
+        "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
         "deploy:blue": "pnpm build:cloudflare && wrangler --cwd=.output versions upload --preview-alias blue",
         "deploy:preview": "pnpm build:cloudflare && wrangler --cwd=.output versions upload --preview-alias launch",
         "dev": "nuxt dev",
