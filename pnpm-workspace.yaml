@@ -4,3 +4,14 @@ onlyBuiltDependencies:
   - unrs-resolver
   - vue-demi
   - workerd
+
+overrides:
+  '@eslint/config-array>minimatch': ^11.0.1
+  '@typescript-eslint/typescript-estree>minimatch': ^11.0.1
+  '@vercel/nft>glob': ^14.0.2
+  '@vue/language-core>minimatch': ^11.0.1
+  eslint>minimatch: ^11.0.1
+  micromark-extension-math>katex: ^0.18.2
+
+patchedDependencies:
+  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch

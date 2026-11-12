@@ -51,7 +51,7 @@ pnpm dev
 
 The development server is available at `http://localhost:3000`.
 
-The repository requires Node 22.13 or newer within the Node 22 release line, or Node 24 and newer, for development and Cloudflare commands. `.node-version` pins Node 22.16.0, and Corepack reads the pinned pnpm version from `package.json`.
+The repository requires Node 22.22.3+, Node 24.15+, or Node 26+, for development and Cloudflare commands. `.node-version` pins Node 24.15.0, and Corepack reads the pinned pnpm version from `package.json`.
 
 ## Commands
 
@@ -98,3 +98,13 @@ Report issues specific to this fork in [this repository](https://github.com/jcb7
 ## License
 
 PrefillPrompt is open-source software available under the [MIT License](./LICENSE).
+
+## Dependency security
+
+The pinned toolchain uses Nuxt 4 and scoped overrides for patched build dependencies.
+`deepmerge@4.3.1` has no upstream fix for [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4).
+The committed pnpm patch rejects `__proto__` keys when copying both merge inputs;
+`test/deepmerge-security.test.ts` covers poisoned targets, null-prototype inputs,
+nested inputs, and ordinary merges. The version-based audit still reports this
+low-severity advisory; it is not suppressed. Remove the patch when the dependency
+chain adopts an upstream fix.

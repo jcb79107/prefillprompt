@@ -11,13 +11,13 @@ const requiredAssets = [
 ]
 
 describe('production static assets', () => {
-    it('keeps public assets in the directory explicitly configured for srcDir', () => {
+    it('keeps public assets in the root directory configured for Nuxt 4', () => {
         const config = readFileSync(
             new URL('../nuxt.config.ts', import.meta.url),
             'utf8',
         )
 
-        assert.match(config, /public:\s*'\.\.\/public'/)
+        assert.match(config, /public:\s*'public'/)
         for (const asset of requiredAssets) {
             assert.equal(
                 existsSync(new URL(`../public/${asset}`, import.meta.url)),
